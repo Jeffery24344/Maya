@@ -11,6 +11,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -19,11 +20,6 @@ import androidx.compose.ui.unit.dp
 
 enum class NovaState { IDLE, LISTENING, THINKING, SPEAKING }
 
-/**
- * A simple breathing orb — the closest thing to a "face" Nova has. Idle breathes
- * slowly, listening pulses faster and brighter, thinking rotates a shimmer, speaking
- * bounces gently in sync-ish with output. All pure Compose, no image assets needed.
- */
 @Composable
 fun NovaOrb(state: NovaState, modifier: Modifier = Modifier) {
     val infiniteTransition = rememberInfiniteTransition(label = "nova_orb")
