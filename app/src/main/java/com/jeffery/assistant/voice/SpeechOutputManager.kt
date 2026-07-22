@@ -39,6 +39,23 @@ class SpeechOutputManager(context: Context) {
         onSpeakingChanged = listener
     }
 
+    /**
+     * Nudges pitch/rate around the base warmth tuning to reflect current mood —
+     * higher energy speaks slightly faster/brighter, low valence speaks slightly
+     * flatter/slower. Subtle on purpose; call before speak().
+     */
+    fun applyMood(energy: Float, valence: Float) {
+        if (!ready) return
+        val negativity = (-valence).coerceAtLeast(0f) // how far into negative territory, 0 if positive/neutral
+        val positivity = valence.coerceAtLeast(0f)
+        val pitch = 1.03f + (energy - 0.5f) * 0.06f + positivity * 0.03f
+        val rate = 0.98f + (energy - 0.5f) * 0.1f - negativity * 0.04f
+        tts().let {
+            it?.setPitch(pitch.coerceIn(0.85f, 1.2f))
+            it?.setSpeechRate(rate.coerceIn(0.8f, 1.2f))
+        }
+    }
+
     fun speak(text: String) {
         if (!ready) return
         tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "assistant_utterance")

@@ -2,6 +2,7 @@ package com.jeffery.assistant.llm
 
 import android.content.Context
 import com.jeffery.assistant.awareness.ForegroundAppTracker
+import com.jeffery.assistant.memory.MoodStore
 import com.jeffery.assistant.memory.NovaMemoryStore
 import com.jeffery.assistant.memory.UsageTracker
 import kotlinx.coroutines.Dispatchers
@@ -37,6 +38,7 @@ class LlmHelper(context: Context) {
     private val memoryStore = NovaMemoryStore(context)
     private val usageTracker = UsageTracker(context)
     private val appTracker = ForegroundAppTracker(context)
+    val moodStore = MoodStore(context)
     private val client = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(120, TimeUnit.SECONDS)
@@ -57,6 +59,8 @@ class LlmHelper(context: Context) {
             return@callbackFlow
         }
 
+        moodStore.applyMessageSentiment(prompt)
+
         val messages = JSONArray().apply {
             put(
                 JSONObject().put("role", "system").put(
@@ -64,7 +68,8 @@ class LlmHelper(context: Context) {
                     Persona.buildSystemPrompt(
                         facts = memoryStore.allFacts(),
                         observedPatterns = usageTracker.summarizePatterns(),
-                        currentForegroundApp = appTracker.currentForegroundAppLabel()
+                        currentForegroundApp = appTracker.currentForegroundAppLabel(),
+                        moodLabel = moodStore.currentMoodLabel()
                     )
                 )
             )

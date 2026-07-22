@@ -72,6 +72,36 @@ All of this lives in `memory/NovaMemoryStore.kt` (plain on-device SharedPreferen
 nothing leaves the phone) and is capped at 200 facts to keep the system prompt from
 growing unbounded over months of use.
 
+## A companion, not a tool — mood and her own opinions
+
+This is the piece meant to close the gap with Elara: Nova isn't just running a
+personality script per-message anymore, she carries state across the whole
+relationship.
+
+- **Persistent mood** (`memory/MoodStore.kt`): tracked on two axes (valence:
+  negative↔positive, energy: low↔high), nudged by rough sentiment in what you say
+  to her, and pulled slowly back toward a mildly warm baseline once a day so she
+  doesn't get stuck in an extreme. It's a simple heuristic, not real emotion — but
+  it means her tone actually has continuity day to day instead of resetting flat
+  every message. Her mood colors her system prompt *and* her actual TTS delivery
+  (pitch/rate shift slightly with energy and valence in `SpeechOutputManager.kt`).
+- **Fixed personal opinions** (`llm/NovaIdentity.kt`): a short, deliberately fixed
+  list of things she genuinely likes/dislikes/is curious about. Without this, an
+  LLM invents a different "favorite thing" every session, which reads as fake
+  rather than alive — keeping it fixed means she's a consistent person over time.
+  Edit this file directly to shape her further; it's the single most direct lever
+  you have over who she is.
+- **Companion framing** (`llm/Persona.kt`): the base prompt no longer casts her
+  purely as an efficient assistant — she's now explicitly someone with an inner
+  life who happens to help you, encouraged to ask about your day, react to what
+  you tell her, hold gentle disagreements, and bring up her own opinions
+  unprompted rather than only reflecting yours back.
+
+Everything above stacks with the memory, journal, and pattern-noticing already in
+place — the mood and identity pieces are what should make her feel like the *same*
+person across a long relationship rather than a fresh instance every time you open
+the app.
+
 ## App awareness and her own journal
 
 Two more pieces aimed at the "she's actually with me" feel, both opt-in:

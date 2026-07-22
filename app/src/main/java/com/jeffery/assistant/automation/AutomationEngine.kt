@@ -62,6 +62,28 @@ class AutomationEngine(
     private val rememberPattern = Pattern.compile("\\bremember (that )?(.+)", Pattern.CASE_INSENSITIVE)
 
     fun tryHandle(command: String): AutomationResult {
+        alarmPattern.matcher(command).let { m ->
+            if (m.find()) return handleAlarm(m)
+        }
+        timerPattern.matcher(command).let { m ->
+            if (m.find()) return handleTimer(m)
+        }
+        reminderPattern.matcher(command).let { m ->
+            if (m.find()) return handleReminder(m)
+        }
+        volumePattern.matcher(command).let { m ->
+            if (m.find()) return handleVolume(m)
+        }
+        if (wifiPattern.matcher(command).find()) return openPanel(Settings.Panel.ACTION_WIFI, "Wi-Fi")
+        if (bluetoothPattern.matcher(command).find()) {
+            return openPanel(Settings.ACTION_BLUETOOTH_SETTINGS, "Bluetooth", isPanel = false)
+        }
+        if (dndPattern.matcher(command).find()) {
+            return openPanel(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS, "Do Not Disturb", isPanel = false)
+        }
+        // Remember/forget are loose catch-alls (they match on the word appearing anywhere),
+        // so they're checked after the more specific automations above to avoid false
+        // positives like "remind me to forget my umbrella" being read as a forget-command.
         if (forgetEverythingPattern.matcher(command).find()) {
             memoryStore.clearAll()
             return AutomationResult.Handled("Done — I've cleared everything I remembered about you.")
@@ -82,25 +104,6 @@ class AutomationEngine(
                 memoryStore.addFact(fact)
                 return AutomationResult.Handled("Got it — I'll remember that.")
             }
-        }
-        alarmPattern.matcher(command).let { m ->
-            if (m.find()) return handleAlarm(m)
-        }
-        timerPattern.matcher(command).let { m ->
-            if (m.find()) return handleTimer(m)
-        }
-        reminderPattern.matcher(command).let { m ->
-            if (m.find()) return handleReminder(m)
-        }
-        volumePattern.matcher(command).let { m ->
-            if (m.find()) return handleVolume(m)
-        }
-        if (wifiPattern.matcher(command).find()) return openPanel(Settings.Panel.ACTION_WIFI, "Wi-Fi")
-        if (bluetoothPattern.matcher(command).find()) {
-            return openPanel(Settings.ACTION_BLUETOOTH_SETTINGS, "Bluetooth", isPanel = false)
-        }
-        if (dndPattern.matcher(command).find()) {
-            return openPanel(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS, "Do Not Disturb", isPanel = false)
         }
         openAppPattern.matcher(command).let { m ->
             if (m.find()) return handleOpenApp(m.group(1)?.trim().orEmpty())

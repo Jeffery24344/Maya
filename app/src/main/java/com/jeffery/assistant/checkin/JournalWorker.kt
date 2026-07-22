@@ -8,6 +8,7 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.jeffery.assistant.awareness.ForegroundAppTracker
 import com.jeffery.assistant.memory.JournalStore
+import com.jeffery.assistant.memory.MoodStore
 import com.jeffery.assistant.memory.NovaMemoryStore
 import com.jeffery.assistant.memory.UsageTracker
 import java.text.SimpleDateFormat
@@ -28,6 +29,8 @@ class JournalWorker(context: Context, params: WorkerParameters) : CoroutineWorke
         val usageTracker = UsageTracker(applicationContext)
         val memoryStore = NovaMemoryStore(applicationContext)
         val appTracker = ForegroundAppTracker(applicationContext)
+        val moodStore = MoodStore(applicationContext)
+        moodStore.applyDailyDrift()
 
         val parts = mutableListOf<String>()
 
@@ -50,6 +53,8 @@ class JournalWorker(context: Context, params: WorkerParameters) : CoroutineWorke
         if (parts.isEmpty()) {
             parts.add("Quiet day — nothing notable to log.")
         }
+        // Mood goes first regardless, so entries always carry some emotional continuity.
+        parts.add(0, "Feeling ${moodStore.currentMoodLabel()} today.")
 
         val dateLabel = SimpleDateFormat("EEE, MMM d", Locale.getDefault()).format(System.currentTimeMillis())
         journal.addEntry("[$dateLabel] ${parts.joinToString(" ")}")

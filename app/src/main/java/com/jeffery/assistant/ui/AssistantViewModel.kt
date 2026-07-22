@@ -157,6 +157,7 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
                 updateMessageAt(placeholderIndex, builder.toString())
             }
             _uiState.value = _uiState.value.copy(isThinking = false)
+            speechOutput.applyMood(llmHelper.moodStore.energy, llmHelper.moodStore.valence)
             speechOutput.speak(builder.toString())
         }
     }

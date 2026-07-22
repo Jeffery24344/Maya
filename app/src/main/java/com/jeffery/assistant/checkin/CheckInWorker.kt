@@ -7,6 +7,7 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.jeffery.assistant.automation.NotificationHelper
+import com.jeffery.assistant.memory.MoodStore
 import com.jeffery.assistant.memory.NovaMemoryStore
 import com.jeffery.assistant.memory.UsageTracker
 import java.util.concurrent.TimeUnit
@@ -31,16 +32,18 @@ class CheckInWorker(context: Context, params: WorkerParameters) : CoroutineWorke
 
         val memoryStore = NovaMemoryStore(applicationContext)
         val usageTracker = UsageTracker(applicationContext)
+        val moodStore = MoodStore(applicationContext)
 
         val facts = memoryStore.allFacts()
         val patterns = usageTracker.summarizePatterns()
+        val mood = moodStore.currentMoodLabel()
 
         val message = when {
             patterns.isNotEmpty() -> patterns.random()
                 .replace("The user has", "Noticed you've")
                 .replace(".", " — thought I'd mention it.")
-            facts.isNotEmpty() -> "Just checking in. Still keeping track of what you've told me — ${facts.size} thing${if (facts.size != 1) "s" else ""} on file."
-            else -> "Just checking in — nothing urgent, just wanted to say hi."
+            facts.isNotEmpty() -> "Just checking in, feeling $mood today. Still keeping track of what you've told me — ${facts.size} thing${if (facts.size != 1) "s" else ""} on file."
+            else -> "Just checking in — feeling $mood, nothing urgent, just wanted to say hi."
         }
 
         NotificationHelper.show(
