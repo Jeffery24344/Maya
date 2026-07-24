@@ -43,8 +43,8 @@ fun JournalScreen(entries: List<JournalEntry>, onBack: () -> Unit) {
         if (entries.isEmpty()) {
             Column(modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
                 Text(
-                    "Nothing here yet — Nova writes an entry about once a day based on " +
-                        "what she's noticed. Check back tomorrow.",
+                    "Nothing here yet — Nova writes a diary entry about once a day, in " +
+                        "her own voice. Check back tomorrow.",
                     style = MaterialTheme.typography.bodyMedium
                 )
             }

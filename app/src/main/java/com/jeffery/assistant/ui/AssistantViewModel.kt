@@ -7,16 +7,21 @@ import com.jeffery.assistant.automation.AutomationEngine
 import com.jeffery.assistant.automation.AutomationResult
 import com.jeffery.assistant.llm.LlmHelper
 import com.jeffery.assistant.llm.OllamaSettings
+import com.jeffery.assistant.memory.ChatHistoryStore
+import com.jeffery.assistant.memory.FolderSandbox
+import com.jeffery.assistant.memory.GoalStore
 import com.jeffery.assistant.memory.JournalStore
 import com.jeffery.assistant.memory.NovaMemoryStore
 import com.jeffery.assistant.memory.UsageTracker
 import com.jeffery.assistant.voice.SpeechOutputManager
 import com.jeffery.assistant.voice.VoiceEvent
 import com.jeffery.assistant.voice.VoiceInputManager
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.concurrent.TimeUnit
 
 data class AssistantUiState(
@@ -35,7 +40,10 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
     private val memoryStore = NovaMemoryStore(application)
     private val usageTracker = UsageTracker(application)
     private val journalStore = JournalStore(application)
-    private val automationEngine = AutomationEngine(application, memoryStore, usageTracker)
+    private val chatHistoryStore = ChatHistoryStore(application)
+    private val goalStore = GoalStore(application)
+    private val folderSandbox = FolderSandbox(application)
+    private val automationEngine = AutomationEngine(application, memoryStore, usageTracker, goalStore, folderSandbox)
     private val llmHelper = LlmHelper(application)
     val ollamaSettings = OllamaSettings(application)
 
@@ -47,7 +55,16 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
         speechOutput.setOnSpeakingChanged { speaking ->
             _uiState.value = _uiState.value.copy(isSpeaking = speaking)
         }
+        loadPersistedTranscript()
         showWelcomeBackGreeting()
+    }
+
+    /** Restores the visible chat transcript from disk so reopening the app doesn't start blank. */
+    private fun loadPersistedTranscript() {
+        val restored = chatHistoryStore.allMessages().map { ChatMessage(it.text, it.isUser) }
+        if (restored.isNotEmpty()) {
+            _uiState.value = _uiState.value.copy(messages = restored)
+        }
     }
 
     /**
@@ -112,6 +129,7 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
     /** Clears chat history and the model's conversational memory, keeping her persona. */
     fun startNewConversation() {
         llmHelper.resetConversation()
+        chatHistoryStore.clear()
         _uiState.value = _uiState.value.copy(messages = emptyList())
     }
 
@@ -126,23 +144,18 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
     fun handleUserInput(text: String) {
         if (text.isBlank()) return
         appendMessage(ChatMessage(text, isUser = true))
+        chatHistoryStore.appendMessage(text, isUser = true)
 
-        // Automation commands are handled deterministically and skip the LLM.
-        when (val result = automationEngine.tryHandle(text)) {
-            is AutomationResult.Handled -> {
-                respond(result.confirmation)
-                return
-            }
-            is AutomationResult.Failed -> {
-                respond(result.reason)
-                return
-            }
-            AutomationResult.NotAnAutomationCommand -> {
-                // fall through to the LLM for conversational replies
+        viewModelScope.launch {
+            // Some automations (weather, website checks) now make real network calls,
+            // so this runs off the main thread to avoid freezing the UI.
+            val result = withContext(Dispatchers.IO) { automationEngine.tryHandle(text) }
+            when (result) {
+                is AutomationResult.Handled -> respond(result.confirmation)
+                is AutomationResult.Failed -> respond(result.reason)
+                AutomationResult.NotAnAutomationCommand -> askLlm(text)
             }
         }
-
-        askLlm(text)
     }
 
     private fun askLlm(prompt: String) {
@@ -157,6 +170,9 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
                 updateMessageAt(placeholderIndex, builder.toString())
             }
             _uiState.value = _uiState.value.copy(isThinking = false)
+            // Persist once the full reply is in, rather than writing to disk on every
+            // streamed chunk.
+            chatHistoryStore.appendMessage(builder.toString(), isUser = false)
             speechOutput.applyMood(llmHelper.moodStore.energy, llmHelper.moodStore.valence)
             speechOutput.speak(builder.toString())
         }
@@ -164,6 +180,7 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
 
     private fun respond(text: String) {
         appendMessage(ChatMessage(text, isUser = false))
+        chatHistoryStore.appendMessage(text, isUser = false)
         speechOutput.speak(text)
     }
 

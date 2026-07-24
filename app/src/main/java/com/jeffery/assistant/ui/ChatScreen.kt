@@ -1,9 +1,13 @@
 package com.jeffery.assistant.ui
 
+import android.provider.OpenableColumns
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.draganddrop.dragAndDropTarget
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Book
@@ -15,11 +19,21 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draganddrop.DragAndDropEvent
+import androidx.compose.ui.draganddrop.DragAndDropTarget
+import androidx.compose.ui.draganddrop.toAndroidDragEvent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.jeffery.assistant.awareness.ForegroundAppTracker
 
-@OptIn(ExperimentalMaterial3Api::class)
+private val QUICK_REPLIES = listOf(
+    "What's on my calendar today?",
+    "Remind me to ",
+    "Call ",
+    "How are you feeling today?"
+)
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun ChatScreen(viewModel: AssistantViewModel, onOpenJournal: () -> Unit) {
     val state by viewModel.uiState.collectAsState()
@@ -38,6 +52,31 @@ fun ChatScreen(viewModel: AssistantViewModel, onOpenJournal: () -> Unit) {
                 showSettings = false
             }
         )
+    }
+
+    val dropTarget = remember {
+        object : DragAndDropTarget {
+            override fun onDrop(event: DragAndDropEvent): Boolean {
+                val clipData = event.toAndroidDragEvent().clipData ?: return false
+                val appended = StringBuilder()
+                for (i in 0 until clipData.itemCount) {
+                    val item = clipData.getItemAt(i)
+                    val text = item.text
+                    val uri = item.uri
+                    when {
+                        !text.isNullOrBlank() -> appended.append(text).append(" ")
+                        uri != null -> {
+                            val name = displayNameForUri(context, uri) ?: uri.lastPathSegment ?: "file"
+                            appended.append("[Attached: $name] ")
+                        }
+                    }
+                }
+                if (appended.isNotBlank()) {
+                    typedText = (typedText + " " + appended.toString()).trim()
+                }
+                return appended.isNotBlank()
+            }
+        }
     }
 
     Scaffold(
@@ -70,6 +109,7 @@ fun ChatScreen(viewModel: AssistantViewModel, onOpenJournal: () -> Unit) {
                 .fillMaxSize()
                 .padding(padding)
                 .padding(horizontal = 12.dp)
+                .dragAndDropTarget(shouldStartDragAndDrop = { true }, target = dropTarget)
         ) {
             val novaState = when {
                 state.isSpeaking -> NovaState.SPEAKING
@@ -83,7 +123,7 @@ fun ChatScreen(viewModel: AssistantViewModel, onOpenJournal: () -> Unit) {
 
             LazyColumn(
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
                 contentPadding = PaddingValues(vertical = 12.dp)
             ) {
                 items(state.messages) { message ->
@@ -100,6 +140,20 @@ fun ChatScreen(viewModel: AssistantViewModel, onOpenJournal: () -> Unit) {
             }
 
             Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 6.dp)
+            ) {
+                QUICK_REPLIES.forEach { suggestion ->
+                    AssistChip(
+                        onClick = { typedText = suggestion },
+                        label = { Text(suggestion.trim(), maxLines = 1) }
+                    )
+                }
+            }
+
+            Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -109,7 +163,7 @@ fun ChatScreen(viewModel: AssistantViewModel, onOpenJournal: () -> Unit) {
                     value = typedText,
                     onValueChange = { typedText = it },
                     modifier = Modifier.weight(1f),
-                    placeholder = { Text("Type or tap the mic\u2026") },
+                    placeholder = { Text("Type, drop a file, or tap the mic\u2026") },
                     singleLine = true
                 )
                 Spacer(Modifier.width(8.dp))
@@ -136,6 +190,19 @@ fun ChatScreen(viewModel: AssistantViewModel, onOpenJournal: () -> Unit) {
     }
 }
 
+private fun displayNameForUri(context: android.content.Context, uri: android.net.Uri): String? {
+    return try {
+        context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (index >= 0) cursor.getString(index) else null
+            } else null
+        }
+    } catch (e: Exception) {
+        null
+    }
+}
+
 @Composable
 private fun MessageBubble(message: ChatMessage) {
     val alignment = if (message.isUser) Alignment.CenterEnd else Alignment.CenterStart
@@ -143,15 +210,31 @@ private fun MessageBubble(message: ChatMessage) {
         MaterialTheme.colorScheme.primaryContainer
     else
         MaterialTheme.colorScheme.surfaceVariant
+    // Asymmetric corners give a more "chat app" feel and make sender obvious at a glance,
+    // on top of the alignment/color difference.
+    val bubbleShape = if (message.isUser)
+        RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomStart = 16.dp, bottomEnd = 4.dp)
+    else
+        RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomStart = 4.dp, bottomEnd = 16.dp)
 
     Box(modifier = Modifier.fillMaxWidth(), contentAlignment = alignment) {
-        Box(
-            modifier = Modifier
-                .background(bubbleColor, RoundedCornerShape(12.dp))
-                .padding(horizontal = 12.dp, vertical = 8.dp)
-                .fillMaxWidth(0.8f)
-        ) {
-            Text(message.text.ifBlank { "\u2026" })
+        Row(verticalAlignment = Alignment.Bottom) {
+            if (!message.isUser) {
+                Box(
+                    modifier = Modifier
+                        .size(24.dp)
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.6f), CircleShape)
+                )
+                Spacer(Modifier.width(6.dp))
+            }
+            Box(
+                modifier = Modifier
+                    .background(bubbleColor, bubbleShape)
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                    .widthIn(max = 280.dp)
+            ) {
+                Text(message.text.ifBlank { "\u2026" })
+            }
         }
     }
 }

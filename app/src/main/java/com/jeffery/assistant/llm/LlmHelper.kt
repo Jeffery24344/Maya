@@ -2,6 +2,7 @@ package com.jeffery.assistant.llm
 
 import android.content.Context
 import com.jeffery.assistant.awareness.ForegroundAppTracker
+import com.jeffery.assistant.memory.ConversationHistoryStore
 import com.jeffery.assistant.memory.MoodStore
 import com.jeffery.assistant.memory.NovaMemoryStore
 import com.jeffery.assistant.memory.UsageTracker
@@ -38,13 +39,16 @@ class LlmHelper(context: Context) {
     private val memoryStore = NovaMemoryStore(context)
     private val usageTracker = UsageTracker(context)
     private val appTracker = ForegroundAppTracker(context)
+    private val conversationHistoryStore = ConversationHistoryStore(context)
     val moodStore = MoodStore(context)
     private val client = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(120, TimeUnit.SECONDS)
         .build()
 
-    private val history = mutableListOf<Pair<String, String>>() // (user, assistant)
+    // (user, assistant) turns — loaded from disk on startup so closing and reopening
+    // the app doesn't drop the thread of what you were just talking about.
+    private val history = conversationHistoryStore.load().toMutableList()
     private var activeCall: Call? = null
 
     fun isModelAvailable(): Boolean = settings.isConfigured()
@@ -127,6 +131,7 @@ class LlmHelper(context: Context) {
                             }
                             if (json.optBoolean("done", false)) {
                                 history.add(prompt to fullResponse.toString())
+                                trimAndPersistHistory()
                                 break
                             }
                         } catch (_: Exception) {
@@ -141,9 +146,68 @@ class LlmHelper(context: Context) {
         awaitClose { call.cancel() }
     }.flowOn(Dispatchers.IO)
 
+    /**
+     * Keeps the rolling context bounded. Turns that age out aren't just thrown away —
+     * they're condensed into a single long-term fact first, so she can still recall
+     * the gist of an old conversation without you ever having said "remember this."
+     * This runs synchronously on the same background thread OkHttp already called us
+     * on, so it doesn't need its own coroutine scope.
+     */
+    private fun trimAndPersistHistory() {
+        if (history.size > MAX_HISTORY_TURNS) {
+            val overflowCount = history.size - MAX_HISTORY_TURNS
+            val aging = history.subList(0, overflowCount).toList()
+            repeat(overflowCount) { history.removeAt(0) }
+            summarizeIntoLongTermMemory(aging)
+        }
+        conversationHistoryStore.save(history)
+    }
+
+    /** Best-effort: condenses aged-out turns into one short fact via a small non-streaming call. */
+    private fun summarizeIntoLongTermMemory(turns: List<Pair<String, String>>) {
+        if (!settings.isConfigured() || turns.isEmpty()) return
+        try {
+            val transcript = turns.joinToString("\n") { (u, a) -> "User: $u\nNova: $a" }
+            val messages = JSONArray().apply {
+                put(
+                    JSONObject().put("role", "system").put(
+                        "content",
+                        "Summarize the durable, factual takeaway from this excerpt of a past " +
+                            "conversation in ONE short sentence, focused only on things worth " +
+                            "remembering about the user long-term (their situation, preferences, " +
+                            "plans). If there's nothing worth keeping, reply with exactly: NONE."
+                    )
+                )
+                put(JSONObject().put("role", "user").put("content", transcript))
+            }
+            val body = JSONObject().apply {
+                put("model", settings.model)
+                put("messages", messages)
+                put("stream", false)
+            }
+            val request = Request.Builder()
+                .url(CHAT_ENDPOINT)
+                .addHeader("Authorization", "Bearer ${settings.apiKey}")
+                .post(body.toString().toRequestBody("application/json".toMediaType()))
+                .build()
+
+            client.newCall(request).execute().use { resp ->
+                if (!resp.isSuccessful) return
+                val json = JSONObject(resp.body?.string().orEmpty())
+                val summary = json.optJSONObject("message")?.optString("content")?.trim().orEmpty()
+                if (summary.isNotBlank() && !summary.equals("NONE", ignoreCase = true)) {
+                    memoryStore.addFact("From an earlier conversation: $summary")
+                }
+            }
+        } catch (e: Exception) {
+            // Non-critical enhancement — silently skip on any failure (network, parsing, etc.)
+        }
+    }
+
     /** Clears conversation memory. Persona is re-sent as a system message every request regardless. */
     fun resetConversation() {
         history.clear()
+        conversationHistoryStore.clear()
     }
 
     fun close() {
