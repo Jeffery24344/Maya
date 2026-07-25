@@ -13,6 +13,7 @@ import com.jeffery.assistant.memory.FolderSandbox
 import com.jeffery.assistant.memory.GoalStore
 import com.jeffery.assistant.memory.JournalStore
 import com.jeffery.assistant.memory.NovaMemoryStore
+import com.jeffery.assistant.memory.SecondaryCharacterStore
 import com.jeffery.assistant.memory.UsageTracker
 import com.jeffery.assistant.voice.SpeechOutputManager
 import com.jeffery.assistant.voice.VoiceEvent
@@ -46,7 +47,8 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
     private val chatHistoryStore = ChatHistoryStore(application)
     private val goalStore = GoalStore(application)
     private val folderSandbox = FolderSandbox(application)
-    private val automationEngine = AutomationEngine(application, memoryStore, usageTracker, goalStore, folderSandbox)
+    private val secondaryCharacterStore = SecondaryCharacterStore(application)
+    private val automationEngine = AutomationEngine(application, memoryStore, usageTracker, goalStore, folderSandbox, secondaryCharacterStore)
     private val llmHelper = LlmHelper(application)
     val ollamaSettings = OllamaSettings(application)
 
@@ -67,7 +69,7 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
 
     /** Restores the visible chat transcript from disk so reopening the app doesn't start blank. */
     private fun loadPersistedTranscript() {
-        val restored = chatHistoryStore.allMessages().map { ChatMessage(it.text, it.isUser) }
+        val restored = chatHistoryStore.allMessages().map { ChatMessage(it.text, it.isUser, it.speakerName) }
         if (restored.isNotEmpty()) {
             _uiState.value = _uiState.value.copy(messages = restored)
         }
@@ -189,9 +191,34 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
             _uiState.value = _uiState.value.copy(isThinking = false, moodLabel = llmHelper.moodStore.currentMoodLabel())
             // Persist once the full reply is in, rather than writing to disk on every
             // streamed chunk.
-            chatHistoryStore.appendMessage(builder.toString(), isUser = false)
+            val novaReply = builder.toString()
+            chatHistoryStore.appendMessage(novaReply, isUser = false)
             speechOutput.applyMood(llmHelper.moodStore.energy, llmHelper.moodStore.valence)
-            speechOutput.speak(builder.toString())
+            speechOutput.speak(novaReply)
+
+            if (llmHelper.hasActiveSecondaryCharacter()) {
+                askSecondaryCharacter(prompt, novaReply)
+            }
+        }
+    }
+
+    /** Streams the invited secondary character's reply, labeled with their name in the UI/history. */
+    private fun askSecondaryCharacter(prompt: String, novaReply: String) {
+        val speakerName = llmHelper.secondaryCharacterName() ?: return
+        val placeholderIndex = _uiState.value.messages.size
+        appendMessage(ChatMessage("", isUser = false, speakerName = speakerName))
+
+        viewModelScope.launch {
+            val builder = StringBuilder()
+            llmHelper.generateSecondaryResponse(prompt, novaReply).collect { chunk ->
+                builder.append(chunk)
+                updateMessageAt(placeholderIndex, builder.toString())
+            }
+            val reply = builder.toString()
+            if (reply.isNotBlank()) {
+                chatHistoryStore.appendMessage(reply, isUser = false, speakerName = speakerName)
+                speechOutput.speak(reply)
+            }
         }
     }
 

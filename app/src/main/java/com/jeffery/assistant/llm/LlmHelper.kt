@@ -6,6 +6,7 @@ import com.jeffery.assistant.memory.ConversationHistoryStore
 import com.jeffery.assistant.memory.EvolvingPersonality
 import com.jeffery.assistant.memory.MoodStore
 import com.jeffery.assistant.memory.NovaMemoryStore
+import com.jeffery.assistant.memory.SecondaryCharacterStore
 import com.jeffery.assistant.memory.UsageTracker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
@@ -43,6 +44,7 @@ class LlmHelper(context: Context) {
     private val appTracker = ForegroundAppTracker(context)
     private val conversationHistoryStore = ConversationHistoryStore(context)
     private val evolvingPersonality = EvolvingPersonality(context)
+    private val secondaryCharacterStore = SecondaryCharacterStore(context)
     val moodStore = MoodStore(context)
     private val client = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
@@ -55,6 +57,9 @@ class LlmHelper(context: Context) {
     private var activeCall: Call? = null
 
     fun isModelAvailable(): Boolean = settings.isConfigured()
+
+    fun hasActiveSecondaryCharacter(): Boolean = secondaryCharacterStore.isActive()
+    fun secondaryCharacterName(): String? = secondaryCharacterStore.get()?.name
 
     /** No-op — nothing to load locally. Kept so callers don't need to change. */
     suspend fun initialize() { /* Ollama Cloud needs no local setup */ }
@@ -140,6 +145,94 @@ class LlmHelper(context: Context) {
                                 trimAndPersistHistory()
                                 break
                             }
+                        } catch (_: Exception) {
+                            // skip malformed line
+                        }
+                    }
+                    close()
+                }
+            }
+        })
+
+        awaitClose { call.cancel() }
+    }.flowOn(Dispatchers.IO)
+
+    /**
+     * Streams a reply from the secondary character (if one's been invited — see
+     * hasActiveSecondaryCharacter). Shares the same rolling conversation history as
+     * Nova rather than keeping a separate one, since this is meant to feel like one
+     * group conversation, not two independent chats. She's given Nova's just-generated
+     * reply directly so she can react to both the user and Nova naturally.
+     *
+     * Note: unlike Nova, the secondary character doesn't get her own mood or evolving
+     * personality — she's a static persona from the moment she's invented. A fuller
+     * version of this could give her the same depth Nova has; not attempted here.
+     */
+    fun generateSecondaryResponse(userPrompt: String, novaReply: String): Flow<String> = callbackFlow {
+        val character = secondaryCharacterStore.get()
+        if (character == null || !settings.isConfigured()) {
+            close()
+            return@callbackFlow
+        }
+
+        val messages = JSONArray().apply {
+            put(
+                JSONObject().put("role", "system").put(
+                    "content",
+                    "You are ${character.name}, a friend that ${personaSettings.name} (another AI " +
+                        "companion) invited into a group chat with her user. ${character.personality} " +
+                        "You're in a three-way conversation — the user, ${personaSettings.name}, and " +
+                        "you. Text casually and briefly like a real person texting, react to what's " +
+                        "actually been said, and stay distinctly yourself rather than echoing " +
+                        "${personaSettings.name}'s tone."
+                )
+            )
+            for ((userTurn, assistantTurn) in history.takeLast(MAX_HISTORY_TURNS)) {
+                put(JSONObject().put("role", "user").put("content", userTurn))
+                put(JSONObject().put("role", "assistant").put("content", assistantTurn))
+            }
+            put(JSONObject().put("role", "user").put("content", userPrompt))
+            put(JSONObject().put("role", "assistant").put("content", "[${personaSettings.name}]: $novaReply"))
+            put(JSONObject().put("role", "user").put("content", "(your turn to respond, ${character.name})"))
+        }
+
+        val body = JSONObject().apply {
+            put("model", settings.model)
+            put("messages", messages)
+            put("stream", true)
+        }
+
+        val request = Request.Builder()
+            .url(CHAT_ENDPOINT)
+            .addHeader("Authorization", "Bearer ${settings.apiKey}")
+            .post(body.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+
+        val call = client.newCall(request)
+
+        call.enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                close()
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                response.use { resp ->
+                    if (!resp.isSuccessful) {
+                        close()
+                        return
+                    }
+                    val source = resp.body?.source() ?: run {
+                        close()
+                        return
+                    }
+                    while (!source.exhausted()) {
+                        val line = source.readUtf8Line() ?: break
+                        if (line.isBlank()) continue
+                        try {
+                            val json = JSONObject(line)
+                            val chunk = json.optJSONObject("message")?.optString("content").orEmpty()
+                            if (chunk.isNotEmpty()) trySend(chunk)
+                            if (json.optBoolean("done", false)) break
                         } catch (_: Exception) {
                             // skip malformed line
                         }

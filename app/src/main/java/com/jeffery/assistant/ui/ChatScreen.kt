@@ -258,23 +258,40 @@ private fun MessageBubble(message: ChatMessage) {
     else
         RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomStart = 4.dp, bottomEnd = 16.dp)
 
+    // The secondary character (if one's been invited into a group chat) gets a visibly
+    // different avatar color so it's obvious at a glance who's talking.
+    val avatarColor = if (message.speakerName != null)
+        MaterialTheme.colorScheme.tertiary.copy(alpha = 0.7f)
+    else
+        MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
+
     Box(modifier = Modifier.fillMaxWidth(), contentAlignment = alignment) {
-        Row(verticalAlignment = Alignment.Bottom) {
-            if (!message.isUser) {
+        Column(horizontalAlignment = if (message.isUser) Alignment.End else Alignment.Start) {
+            if (message.speakerName != null) {
+                Text(
+                    message.speakerName,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.tertiary,
+                    modifier = Modifier.padding(start = 30.dp, bottom = 2.dp)
+                )
+            }
+            Row(verticalAlignment = Alignment.Bottom) {
+                if (!message.isUser) {
+                    Box(
+                        modifier = Modifier
+                            .size(24.dp)
+                            .background(avatarColor, CircleShape)
+                    )
+                    Spacer(Modifier.width(6.dp))
+                }
                 Box(
                     modifier = Modifier
-                        .size(24.dp)
-                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.6f), CircleShape)
-                )
-                Spacer(Modifier.width(6.dp))
-            }
-            Box(
-                modifier = Modifier
-                    .background(bubbleColor, bubbleShape)
-                    .padding(horizontal = 12.dp, vertical = 8.dp)
-                    .widthIn(max = 280.dp)
-            ) {
-                Text(message.text.ifBlank { "\u2026" })
+                        .background(bubbleColor, bubbleShape)
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                        .widthIn(max = 280.dp)
+                ) {
+                    Text(message.text.ifBlank { "\u2026" })
+                }
             }
         }
     }

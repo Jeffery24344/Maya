@@ -12,6 +12,7 @@ import android.provider.Settings
 import com.jeffery.assistant.memory.FolderSandbox
 import com.jeffery.assistant.memory.GoalStore
 import com.jeffery.assistant.memory.NovaMemoryStore
+import com.jeffery.assistant.memory.SecondaryCharacterStore
 import com.jeffery.assistant.memory.UsageTracker
 import java.util.Calendar
 import java.util.regex.Pattern
@@ -37,7 +38,8 @@ class AutomationEngine(
     private val memoryStore: NovaMemoryStore,
     private val usageTracker: UsageTracker,
     private val goalStore: GoalStore,
-    private val folderSandbox: FolderSandbox
+    private val folderSandbox: FolderSandbox,
+    private val secondaryCharacterStore: SecondaryCharacterStore
 ) {
 
     private val alarmPattern = Pattern.compile(
@@ -131,6 +133,16 @@ class AutomationEngine(
     private val readFilePattern = Pattern.compile("\\bread (.+?) from (?:my )?(.+?)(?: folder)?$", Pattern.CASE_INSENSITIVE)
     private val writeFilePattern = Pattern.compile(
         "\\bin (?:my )?(.+?) folder,? (?:create|write) a file called (.+?) (?:saying|with|containing)\\s+(.+)",
+        Pattern.CASE_INSENSITIVE
+    )
+
+    // --- Group chat ---
+    private val inviteCharacterPattern = Pattern.compile(
+        "\\b(bring (?:in )?(?:someone|another|a friend)|invite someone|make this a group chat)\\b",
+        Pattern.CASE_INSENSITIVE
+    )
+    private val endGroupChatPattern = Pattern.compile(
+        "\\b(make it just us again|end the group chat|remove (?:the )?(?:other|second) (?:character|person)|just you and me)\\b",
         Pattern.CASE_INSENSITIVE
     )
 
@@ -234,6 +246,9 @@ class AutomationEngine(
             if (m.find()) return handleBrowseFolder(m.group(1).orEmpty())
         }
 
+        if (endGroupChatPattern.matcher(command).find()) return handleEndGroupChat()
+        if (inviteCharacterPattern.matcher(command).find()) return handleInviteCharacter()
+
         openAppPattern.matcher(command).let { m ->
             if (m.find()) return handleOpenApp(m.group(1)?.trim().orEmpty())
         }
@@ -333,6 +348,22 @@ class AutomationEngine(
         } else {
             AutomationResult.Failed("Couldn't write that file — check the folder's been granted.")
         }
+    }
+
+    private fun handleInviteCharacter(): AutomationResult {
+        val invented = CharacterInviter.inventCharacter(context)
+            ?: return AutomationResult.Failed("Couldn't come up with someone to invite right now — check your API key in settings.")
+        secondaryCharacterStore.set(invented.name, invented.personality)
+        return AutomationResult.Handled("Hey, I brought in ${invented.name} — ${invented.personality}")
+    }
+
+    private fun handleEndGroupChat(): AutomationResult {
+        if (!secondaryCharacterStore.isActive()) {
+            return AutomationResult.Failed("It's already just us.")
+        }
+        val name = secondaryCharacterStore.get()?.name ?: "they"
+        secondaryCharacterStore.clear()
+        return AutomationResult.Handled("Alright, $name's stepping out — just us again.")
     }
 
     private fun cleanName(raw: String): String =

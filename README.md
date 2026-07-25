@@ -282,6 +282,28 @@ formal little summary — closer to how people actually text a friend than how a
 formal assistant responds. She'll still go longer when a question genuinely needs
 depth, but the default length dropped a lot on purpose.
 
+## Group chat — she can bring someone else in
+
+Say **"bring in another character"** (or "make this a group chat", "invite
+someone") and Nova invents a friend — their name and personality, not something
+you configure — and brings them into the conversation. From then on, every message
+you send gets a reply from both of them, each labeled with their own name and a
+distinct avatar color so it's clear who's talking. Say **"make it just us again"**
+(or "end the group chat") to send them home.
+
+A few honest limitations on this v1:
+- The secondary character shares Nova's rolling conversation window rather than
+  keeping a separate one — meant to feel like one group conversation, not two
+  independent chats bolted together.
+- They're a static persona from the moment they're invented — unlike Nova, they
+  don't get their own mood or evolving personality. A fuller version of this could
+  give them the same depth; not attempted here to keep scope contained.
+- Only one secondary character can be active at a time. Inviting a new one while
+  one's already active replaces them.
+- This does make an extra Ollama Cloud call per message while active (one for
+  Nova, one for the character), so expect roughly double the API usage during a
+  group conversation.
+
 ## Phone access — contacts, calls, texts, calendar, photos
 
 Nova can now reach further into the phone itself:

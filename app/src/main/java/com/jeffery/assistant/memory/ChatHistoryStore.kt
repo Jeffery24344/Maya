@@ -4,7 +4,12 @@ import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
 
-data class StoredChatMessage(val text: String, val isUser: Boolean, val timestampMillis: Long)
+data class StoredChatMessage(
+    val text: String,
+    val isUser: Boolean,
+    val timestampMillis: Long,
+    val speakerName: String? = null
+)
 
 /**
  * Persists the visible chat transcript so reopening the app shows your conversation
@@ -20,25 +25,19 @@ class ChatHistoryStore(context: Context) {
         val array = JSONArray(raw)
         return (0 until array.length()).map {
             val obj = array.getJSONObject(it)
-            StoredChatMessage(obj.getString("text"), obj.getBoolean("isUser"), obj.getLong("time"))
+            StoredChatMessage(
+                obj.getString("text"),
+                obj.getBoolean("isUser"),
+                obj.getLong("time"),
+                if (obj.has("speaker")) obj.optString("speaker").ifBlank { null } else null
+            )
         }
     }
 
-    fun appendMessage(text: String, isUser: Boolean) {
+    fun appendMessage(text: String, isUser: Boolean, speakerName: String? = null) {
         val current = allMessages().toMutableList()
-        current.add(StoredChatMessage(text, isUser, System.currentTimeMillis()))
+        current.add(StoredChatMessage(text, isUser, System.currentTimeMillis(), speakerName))
         while (current.size > MAX_MESSAGES) current.removeAt(0)
-        save(current)
-    }
-
-    /** Overwrites the whole transcript — used to keep a streaming assistant reply in sync as it grows. */
-    fun replaceLast(text: String, isUser: Boolean) {
-        val current = allMessages().toMutableList()
-        if (current.isNotEmpty() && current.last().isUser == isUser) {
-            current[current.size - 1] = current.last().copy(text = text)
-        } else {
-            current.add(StoredChatMessage(text, isUser, System.currentTimeMillis()))
-        }
         save(current)
     }
 
@@ -49,7 +48,9 @@ class ChatHistoryStore(context: Context) {
     private fun save(messages: List<StoredChatMessage>) {
         val array = JSONArray()
         messages.forEach {
-            array.put(JSONObject().put("text", it.text).put("isUser", it.isUser).put("time", it.timestampMillis))
+            val obj = JSONObject().put("text", it.text).put("isUser", it.isUser).put("time", it.timestampMillis)
+            if (it.speakerName != null) obj.put("speaker", it.speakerName)
+            array.put(obj)
         }
         prefs.edit().putString(KEY_MESSAGES, array.toString()).apply()
     }
