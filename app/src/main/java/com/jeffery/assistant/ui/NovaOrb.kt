@@ -26,7 +26,7 @@ enum class NovaState { IDLE, LISTENING, THINKING, SPEAKING }
  * bounces gently in sync-ish with output. All pure Compose, no image assets needed.
  */
 @Composable
-fun NovaOrb(state: NovaState, modifier: Modifier = Modifier) {
+fun NovaOrb(state: NovaState, modifier: Modifier = Modifier, size: androidx.compose.ui.unit.Dp = 72.dp) {
     val infiniteTransition = rememberInfiniteTransition(label = "nova_orb")
 
     val breathDurationMillis = when (state) {
@@ -55,21 +55,21 @@ fun NovaOrb(state: NovaState, modifier: Modifier = Modifier) {
     }
     val color by animateColorAsState(targetValue = targetColor, label = "color")
 
-    Canvas(modifier = modifier.size(72.dp)) {
-        val radius = (size.minDimension / 2f) * scale
+    Canvas(modifier = modifier.size(size)) {
+        val radius = (this.size.minDimension / 2f) * scale
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(color, color.copy(alpha = 0.15f)),
-                center = Offset(size.width / 2f, size.height / 2f),
+                center = Offset(this.size.width / 2f, this.size.height / 2f),
                 radius = radius * 1.6f
             ),
             radius = radius * 1.6f,
-            center = Offset(size.width / 2f, size.height / 2f)
+            center = Offset(this.size.width / 2f, this.size.height / 2f)
         )
         drawCircle(
             color = color,
             radius = radius,
-            center = Offset(size.width / 2f, size.height / 2f)
+            center = Offset(this.size.width / 2f, this.size.height / 2f)
         )
     }
 }

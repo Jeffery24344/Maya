@@ -15,6 +15,7 @@ import android.view.MotionEvent
 import android.view.WindowManager
 import androidx.core.app.NotificationCompat
 import com.jeffery.assistant.MainActivity
+import com.jeffery.assistant.llm.PersonaSettings
 import com.jeffery.assistant.memory.MoodStore
 
 /**
@@ -64,6 +65,7 @@ class NovaPresenceService : Service() {
         }
 
         val mood = MoodStore(applicationContext).currentMoodLabel()
+        val name = PersonaSettings(applicationContext).name
 
         val tapIntent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -76,7 +78,7 @@ class NovaPresenceService : Service() {
 
         return NotificationCompat.Builder(this, channelId)
             .setSmallIcon(android.R.drawable.presence_online)
-            .setContentTitle("Nova")
+            .setContentTitle(name)
             .setContentText("Feeling $mood — tap to talk")
             .setPriority(NotificationCompat.PRIORITY_MIN)
             .setOngoing(true)

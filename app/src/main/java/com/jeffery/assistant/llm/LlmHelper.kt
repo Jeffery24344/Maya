@@ -3,6 +3,7 @@ package com.jeffery.assistant.llm
 import android.content.Context
 import com.jeffery.assistant.awareness.ForegroundAppTracker
 import com.jeffery.assistant.memory.ConversationHistoryStore
+import com.jeffery.assistant.memory.EvolvingPersonality
 import com.jeffery.assistant.memory.MoodStore
 import com.jeffery.assistant.memory.NovaMemoryStore
 import com.jeffery.assistant.memory.UsageTracker
@@ -36,10 +37,12 @@ class LlmHelper(context: Context) {
     }
 
     private val settings = OllamaSettings(context)
+    private val personaSettings = PersonaSettings(context)
     private val memoryStore = NovaMemoryStore(context)
     private val usageTracker = UsageTracker(context)
     private val appTracker = ForegroundAppTracker(context)
     private val conversationHistoryStore = ConversationHistoryStore(context)
+    private val evolvingPersonality = EvolvingPersonality(context)
     val moodStore = MoodStore(context)
     private val client = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
@@ -70,10 +73,13 @@ class LlmHelper(context: Context) {
                 JSONObject().put("role", "system").put(
                     "content",
                     Persona.buildSystemPrompt(
+                        name = personaSettings.name,
+                        personalityNotes = personaSettings.personalityNotes,
                         facts = memoryStore.allFacts(),
                         observedPatterns = usageTracker.summarizePatterns(),
                         currentForegroundApp = appTracker.currentForegroundAppLabel(),
-                        moodLabel = moodStore.currentMoodLabel()
+                        moodLabel = moodStore.currentMoodLabel(),
+                        evolvingTraits = evolvingPersonality.establishedTraits()
                     )
                 )
             )
@@ -163,19 +169,32 @@ class LlmHelper(context: Context) {
         conversationHistoryStore.save(history)
     }
 
-    /** Best-effort: condenses aged-out turns into one short fact via a small non-streaming call. */
+    /**
+     * Best-effort: condenses aged-out turns into one durable fact about the user, AND
+     * separately checks whether the conversation would plausibly have left her with a
+     * genuine developing trait of her own (an interest, an opinion, a bit of personality
+     * that emerges from repeated exposure) — reusing this same call rather than making
+     * a second one. This is the actual mechanism behind her personality evolving from
+     * what she's experienced, not just what she was originally written with.
+     */
     private fun summarizeIntoLongTermMemory(turns: List<Pair<String, String>>) {
         if (!settings.isConfigured() || turns.isEmpty()) return
         try {
-            val transcript = turns.joinToString("\n") { (u, a) -> "User: $u\nNova: $a" }
+            val transcript = turns.joinToString("\n") { (u, a) -> "User: $u\n${personaSettings.name}: $a" }
             val messages = JSONArray().apply {
                 put(
                     JSONObject().put("role", "system").put(
                         "content",
-                        "Summarize the durable, factual takeaway from this excerpt of a past " +
-                            "conversation in ONE short sentence, focused only on things worth " +
-                            "remembering about the user long-term (their situation, preferences, " +
-                            "plans). If there's nothing worth keeping, reply with exactly: NONE."
+                        "You'll see an excerpt of a past conversation between a user and an AI " +
+                            "companion named ${personaSettings.name}. Respond with exactly two lines:\n" +
+                            "Line 1: the durable, factual takeaway worth remembering about the USER " +
+                            "long-term (their situation, preferences, plans), in one short sentence. " +
+                            "If nothing's worth keeping, write exactly NONE.\n" +
+                            "Line 2: ONLY if this exchange would plausibly leave ${personaSettings.name} " +
+                            "herself with a genuine developing interest, opinion, or personality trait " +
+                            "(not a fact about the user — something for HER own character, arising " +
+                            "naturally from this exchange), write it starting with 'TRAIT: ' in one short " +
+                            "phrase. Most exchanges won't produce one — if nothing genuinely fits, write NONE."
                     )
                 )
                 put(JSONObject().put("role", "user").put("content", transcript))
@@ -194,9 +213,18 @@ class LlmHelper(context: Context) {
             client.newCall(request).execute().use { resp ->
                 if (!resp.isSuccessful) return
                 val json = JSONObject(resp.body?.string().orEmpty())
-                val summary = json.optJSONObject("message")?.optString("content")?.trim().orEmpty()
-                if (summary.isNotBlank() && !summary.equals("NONE", ignoreCase = true)) {
-                    memoryStore.addFact("From an earlier conversation: $summary")
+                val content = json.optJSONObject("message")?.optString("content")?.trim().orEmpty()
+                val lines = content.lines().map { it.trim() }.filter { it.isNotBlank() }
+
+                val summaryLine = lines.firstOrNull { !it.startsWith("TRAIT:", ignoreCase = true) }
+                if (!summaryLine.isNullOrBlank() && !summaryLine.equals("NONE", ignoreCase = true)) {
+                    memoryStore.addFact("From an earlier conversation: $summaryLine")
+                }
+
+                val traitLine = lines.firstOrNull { it.startsWith("TRAIT:", ignoreCase = true) }
+                    ?.substringAfter(":")?.trim()
+                if (!traitLine.isNullOrBlank() && !traitLine.equals("NONE", ignoreCase = true)) {
+                    evolvingPersonality.addOrReinforce(traitLine)
                 }
             }
         } catch (e: Exception) {

@@ -7,6 +7,7 @@ import com.jeffery.assistant.automation.AutomationEngine
 import com.jeffery.assistant.automation.AutomationResult
 import com.jeffery.assistant.llm.LlmHelper
 import com.jeffery.assistant.llm.OllamaSettings
+import com.jeffery.assistant.llm.PersonaSettings
 import com.jeffery.assistant.memory.ChatHistoryStore
 import com.jeffery.assistant.memory.FolderSandbox
 import com.jeffery.assistant.memory.GoalStore
@@ -30,13 +31,15 @@ data class AssistantUiState(
     val isThinking: Boolean = false,
     val isSpeaking: Boolean = false,
     val liveTranscript: String = "",
-    val modelReady: Boolean = false
+    val modelReady: Boolean = false,
+    val moodLabel: String = ""
 )
 
 class AssistantViewModel(application: Application) : AndroidViewModel(application) {
 
     private val voiceManager = VoiceInputManager(application)
-    private val speechOutput = SpeechOutputManager(application)
+    val personaSettings = PersonaSettings(application)
+    private val speechOutput = SpeechOutputManager(application, personaSettings)
     private val memoryStore = NovaMemoryStore(application)
     private val usageTracker = UsageTracker(application)
     private val journalStore = JournalStore(application)
@@ -51,7 +54,10 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
     val uiState: StateFlow<AssistantUiState> = _uiState.asStateFlow()
 
     init {
-        _uiState.value = _uiState.value.copy(modelReady = llmHelper.isModelAvailable())
+        _uiState.value = _uiState.value.copy(
+            modelReady = llmHelper.isModelAvailable(),
+            moodLabel = llmHelper.moodStore.currentMoodLabel()
+        )
         speechOutput.setOnSpeakingChanged { speaking ->
             _uiState.value = _uiState.value.copy(isSpeaking = speaking)
         }
@@ -140,6 +146,17 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun journalEntries() = journalStore.allEntries()
 
+    fun availableVoices() = speechOutput.availableVoices()
+
+    /** Call after the settings dialog saves voice/pitch/rate changes. */
+    fun refreshVoiceSettings() {
+        speechOutput.applyBaseVoiceSettings()
+    }
+
+    fun previewVoice(sampleText: String) {
+        speechOutput.speak(sampleText)
+    }
+
     /** Also used for typed (non-voice) input from the text field. */
     fun handleUserInput(text: String) {
         if (text.isBlank()) return
@@ -169,7 +186,7 @@ class AssistantViewModel(application: Application) : AndroidViewModel(applicatio
                 builder.append(chunk)
                 updateMessageAt(placeholderIndex, builder.toString())
             }
-            _uiState.value = _uiState.value.copy(isThinking = false)
+            _uiState.value = _uiState.value.copy(isThinking = false, moodLabel = llmHelper.moodStore.currentMoodLabel())
             // Persist once the full reply is in, rather than writing to disk on every
             // streamed chunk.
             chatHistoryStore.appendMessage(builder.toString(), isUser = false)

@@ -9,9 +9,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
@@ -23,6 +25,7 @@ import androidx.compose.ui.draganddrop.DragAndDropEvent
 import androidx.compose.ui.draganddrop.DragAndDropTarget
 import androidx.compose.ui.draganddrop.toAndroidDragEvent
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.jeffery.assistant.awareness.ForegroundAppTracker
 
@@ -39,16 +42,21 @@ fun ChatScreen(viewModel: AssistantViewModel, onOpenJournal: () -> Unit) {
     val state by viewModel.uiState.collectAsState()
     var typedText by remember { mutableStateOf("") }
     var showSettings by remember { mutableStateOf(false) }
+    var showMenu by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val appTracker = remember { ForegroundAppTracker(context) }
 
     if (showSettings) {
         SettingsDialog(
             settings = viewModel.ollamaSettings,
+            personaSettings = viewModel.personaSettings,
             appTracker = appTracker,
+            availableVoices = viewModel.availableVoices(),
+            onPreviewVoice = { viewModel.refreshVoiceSettings(); viewModel.previewVoice("Hi, this is what I sound like.") },
             onDismiss = { showSettings = false },
             onSaved = {
                 viewModel.refreshModelStatus()
+                viewModel.refreshVoiceSettings()
                 showSettings = false
             }
         )
@@ -81,8 +89,11 @@ fun ChatScreen(viewModel: AssistantViewModel, onOpenJournal: () -> Unit) {
 
     Scaffold(
         topBar = {
+            // Kept deliberately minimal — no title text here, since her name/avatar/status
+            // now live in the header below, closer to how a companion chat app presents
+            // itself than a utility app's toolbar.
             TopAppBar(
-                title = { Text("Nova") },
+                title = {},
                 actions = {
                     if (!state.modelReady) {
                         Text(
@@ -91,14 +102,27 @@ fun ChatScreen(viewModel: AssistantViewModel, onOpenJournal: () -> Unit) {
                             modifier = Modifier.padding(end = 8.dp)
                         )
                     }
-                    IconButton(onClick = { showSettings = true }) {
-                        Icon(Icons.Filled.Settings, contentDescription = "Settings")
-                    }
-                    IconButton(onClick = onOpenJournal) {
-                        Icon(Icons.Filled.Book, contentDescription = "Journal")
-                    }
-                    IconButton(onClick = { viewModel.startNewConversation() }) {
-                        Icon(Icons.Filled.RestartAlt, contentDescription = "New conversation")
+                    Box {
+                        IconButton(onClick = { showMenu = true }) {
+                            Icon(Icons.Filled.MoreVert, contentDescription = "More")
+                        }
+                        DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                            DropdownMenuItem(
+                                text = { Text("Settings") },
+                                leadingIcon = { Icon(Icons.Filled.Settings, contentDescription = null) },
+                                onClick = { showMenu = false; showSettings = true }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Journal") },
+                                leadingIcon = { Icon(Icons.Filled.Book, contentDescription = null) },
+                                onClick = { showMenu = false; onOpenJournal() }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("New conversation") },
+                                leadingIcon = { Icon(Icons.Filled.RestartAlt, contentDescription = null) },
+                                onClick = { showMenu = false; viewModel.startNewConversation() }
+                            )
+                        }
                     }
                 }
             )
@@ -117,17 +141,34 @@ fun ChatScreen(viewModel: AssistantViewModel, onOpenJournal: () -> Unit) {
                 state.isListening -> NovaState.LISTENING
                 else -> NovaState.IDLE
             }
-            Box(modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
-                NovaOrb(state = novaState)
+
+            // Profile-style header — big avatar, name, and a mood status line, closer to
+            // opening a contact/character in a chat app than a small utility indicator.
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                NovaOrb(state = novaState, size = 108.dp)
+                Spacer(Modifier.height(10.dp))
+                Text(viewModel.personaSettings.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                if (state.moodLabel.isNotBlank()) {
+                    Text(
+                        "feeling ${state.moodLabel}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
 
-            LazyColumn(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                contentPadding = PaddingValues(vertical = 12.dp)
-            ) {
-                items(state.messages) { message ->
-                    MessageBubble(message)
+            SelectionContainer {
+                LazyColumn(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    contentPadding = PaddingValues(vertical = 12.dp)
+                ) {
+                    items(state.messages) { message ->
+                        MessageBubble(message)
+                    }
                 }
             }
 

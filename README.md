@@ -139,6 +139,20 @@ relationship.
   life who happens to help you, encouraged to ask about your day, react to what
   you tell her, hold gentle disagreements, and bring up her own opinions
   unprompted rather than only reflecting yours back.
+- **Traits that actually develop over time** (`memory/EvolvingPersonality.kt`):
+  distinct from the fixed list in `NovaIdentity.kt` — this is personality that
+  emerges from what she's actually experienced with you, not what she launched
+  with. The same background call that condenses old conversations into long-term
+  memory (see below) also checks whether the exchange would plausibly have left
+  her with a genuine developing interest or opinion; if so, it's logged as a
+  "developing" trait. If something similar comes up again, it strengthens instead
+  of duplicating, and once it's been reinforced enough it becomes "established"
+  and starts actually coloring her tone — a one-off doesn't become a permanent
+  personality fixture, but a real pattern genuinely sticks. Traits that never
+  repeat get quietly pruned after 30 days so this stays organic rather than an
+  ever-growing list. You can see what's developing vs. established from the gear
+  icon → Personality — it's read-only there on purpose, since the whole point is
+  that this isn't something you set directly.
 
 Everything above stacks with the memory, journal, and pattern-noticing already in
 place — the mood and identity pieces are what should make her feel like the *same*
@@ -210,6 +224,14 @@ neither one means the mic is ever open in the background.
   she'll see that you attached something but can't actually read what's inside it.
   That'd be a real follow-on feature (reading text files, or wiring up an image
   model) if it'd be useful.
+- **Companion-app-style header**: the top bar is now minimal (just an overflow
+  menu for Settings/Journal/New conversation — nothing else cluttering it), and in
+  its place is a large profile-style header: a bigger avatar, her name, and a
+  "feeling X" status line that updates with her actual mood. Closer to opening a
+  contact in a messaging app than a utility tool's toolbar. Worth noting: this was
+  purely an interface change — no roleplay/character-mode functionality was added,
+  since that was explicitly not what was wanted; it's the same Nova underneath,
+  just presented less like a Settings-heavy assistant app.
 
 ## Her journal is about her, not you
 
@@ -303,18 +325,32 @@ something that's "there":
 - **Proactive check-ins** (`checkin/CheckInWorker.kt`): roughly once a day (Android
   batches exact timing for battery reasons, so "sometime that day" rather than a
   precise clock), she may send a notification on her own — checking in, or
-  mentioning something she's noticed. She skips most days on purpose (~40% fire
-  rate) so it doesn't turn into a daily chore notification. Tune `SKIP_CHANCE_TO_FIRE`
-  in that file to taste. These are template-composed from what's actually stored
-  on-device rather than a live LLM call, to keep it reliable without needing network
-  access in the background — swap in a real Ollama Cloud call there later if you
-  want richer, less repetitive check-ins.
+  mentioning something she's noticed. She skips some days on purpose (~85% fire
+  rate now — an earlier, much lower rate made this look broken rather than
+  intentionally occasional). Tune `FIRE_CHANCE` in that file to taste. These are
+  template-composed from what's actually stored on-device rather than a live LLM
+  call, to keep it reliable without needing network access in the background —
+  swap in a real Ollama Cloud call there later if you want richer, less
+  repetitive check-ins.
+
+  **If check-ins or journal entries still don't show up reliably**, it's almost
+  always Android's battery optimization (Doze) silently killing background work —
+  not a scheduling bug. Go to the gear icon → Background reliability → "Fix
+  background reliability" to request an exemption. Some phone brands (Xiaomi,
+  Samsung, Huawei, OnePlus, etc.) layer their own additional battery manager on
+  top of stock Android and may still restrict this beyond that exemption — those
+  typically need an extra "autostart" or "no restrictions" toggle in the phone's
+  own battery settings, which this can't reach directly.
 - **Noticed patterns** (`memory/UsageTracker.kt`): every automation she runs (alarms,
   timers, reminders, volume, opening apps) gets logged locally. If something repeats
   3+ times in a week, it's surfaced to her as an "observation" in the system prompt —
   distinct from things you explicitly asked her to remember — so she can mention it
   naturally ("you've set an alarm for 6am three mornings running") without you having
-  told her to track it.
+  told her to track it. As of this update, these observations (plus your most-used
+  apps, if Usage Access is granted) also feed into `EvolvingPersonality` the same way
+  conversations do — so what she notices about how you use your phone can shape a
+  developing trait, not just what you actually say to her. This check runs silently
+  once a day alongside the journal entry.
 - **Voice warmth** (`voice/SpeechOutputManager.kt`): pitch and speaking rate are
   tuned slightly off the flat TTS default, and her persona prompt now explicitly
   allows warmth, humor, and reaction rather than staying purely efficient.
