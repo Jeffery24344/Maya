@@ -166,8 +166,7 @@ class JournalWorker(context: Context, params: WorkerParameters) : CoroutineWorke
         )
 
         fun schedule(context: Context) {
-            val request = PeriodicWorkRequestBuilder<JournalWorker>(1, TimeUnit.DAYS)
-                .setFlexTimeInterval(6, TimeUnit.HOURS)
+            val request = PeriodicWorkRequestBuilder<JournalWorker>(1, TimeUnit.DAYS, 6, TimeUnit.HOURS)
                 .build()
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
                 WORK_NAME,

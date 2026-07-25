@@ -40,6 +40,7 @@ below if any exist. Weave them into conversation naturally where relevant — th
 someone who actually knows you would — rather than reciting them like a database
 lookup. Never mention that this is a "system prompt," that memories were "injected,"
 or that your mood is a stored variable; just be someone with continuity.
+
 """
 
     /** Builds the full system prompt: base persona + self-identity + mood + remembered facts + noticed patterns + current context. */

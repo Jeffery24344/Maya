@@ -76,8 +76,10 @@ class CheckInWorker(context: Context, params: WorkerParameters) : CoroutineWorke
         private const val FIRE_CHANCE = 0.85f
 
         fun schedule(context: Context) {
-            val request = PeriodicWorkRequestBuilder<CheckInWorker>(1, TimeUnit.DAYS)
-                .setFlexTimeInterval(6, TimeUnit.HOURS) // gives WorkManager a window to actually run it, rather than one exact instant that's easy to miss/defer
+            // Flex interval passed via the constructor overload (rather than a chained
+            // .setFlexTimeInterval(...) call) since that setter isn't available on every
+            // work-runtime-ktx version — this form is the more portable one.
+            val request = PeriodicWorkRequestBuilder<CheckInWorker>(1, TimeUnit.DAYS, 6, TimeUnit.HOURS)
                 .build()
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
                 WORK_NAME,
