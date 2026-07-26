@@ -128,19 +128,75 @@ fun ChatScreen(viewModel: AssistantViewModel, onOpenJournal: () -> Unit) {
                     }
                 }
             )
+        },
+        // The composer lives in its OWN Scaffold slot rather than as the last item in the
+        // body Column. This guarantees it always gets laid out and is never squeezed off
+        // the bottom by the header or chat list — Scaffold reserves exact space for
+        // whatever this slot measures to, and imePadding() here (not on the body) means
+        // only the composer moves when the keyboard opens.
+        bottomBar = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .imePadding()
+                    .padding(horizontal = 12.dp)
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(top = 6.dp)
+                ) {
+                    QUICK_REPLIES.forEach { suggestion ->
+                        AssistChip(
+                            onClick = { typedText = suggestion },
+                            label = { Text(suggestion.trim(), maxLines = 1) }
+                        )
+                    }
+                }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = typedText,
+                        onValueChange = { typedText = it },
+                        modifier = Modifier.weight(1f),
+                        placeholder = { Text("Type, drop a file, or tap the mic\u2026") },
+                        singleLine = true
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    IconButton(onClick = {
+                        if (typedText.isNotBlank()) {
+                            viewModel.handleUserInput(typedText)
+                            typedText = ""
+                        }
+                    }) {
+                        Icon(Icons.Filled.Send, contentDescription = "Send")
+                    }
+                    IconButton(onClick = {
+                        if (state.isListening) viewModel.cancelListening() else viewModel.startListening()
+                    }) {
+                        Icon(
+                            Icons.Filled.Mic,
+                            contentDescription = "Voice input",
+                            tint = if (state.isListening) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+            }
         }
     ) { padding ->
         Column(
             modifier = Modifier
-    .fillMaxSize()
-    .padding(padding)
-    .padding(horizontal = 12.dp)
-    .navigationBarsPadding()
-    .imePadding()
-    .dragAndDropTarget(
-        shouldStartDragAndDrop = { true },
-        target = dropTarget
-    )
+                .fillMaxSize()
+                .padding(padding)
+                .padding(horizontal = 12.dp)
+                .dragAndDropTarget(shouldStartDragAndDrop = { true }, target = dropTarget)
         ) {
             val novaState = when {
                 state.isSpeaking -> NovaState.SPEAKING
@@ -167,94 +223,28 @@ fun ChatScreen(viewModel: AssistantViewModel, onOpenJournal: () -> Unit) {
                 }
             }
 
+            // The weight(1f) lives on SelectionContainer (the direct child of this Column),
+            // not on the LazyColumn nested inside it — Column only reads weight parent-data
+            // off its immediate children.
             SelectionContainer(modifier = Modifier.weight(1f)) {
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-        contentPadding = PaddingValues(vertical = 12.dp)
-    ) {
-        items(state.messages) { message ->
-            MessageBubble(message)
-        }
-    }
-}
-
-if (state.liveTranscript.isNotBlank()) {
-    Text(
-        text = state.liveTranscript,
-        style = MaterialTheme.typography.bodyMedium,
-        modifier = Modifier.padding(vertical = 0.dp)
-    )
-}
-
-Row(
-    horizontalArrangement = Arrangement.spacedBy(8.dp),
-    modifier = Modifier
-        .fillMaxWidth()
-        .horizontalScroll(rememberScrollState())
-        .padding(bottom = 6.dp)
-) {
-    QUICK_REPLIES.take(3).forEach { suggestion ->
-        AssistChip(
-            onClick = { typedText = suggestion },
-            label = { Text(suggestion.trim(), maxLines = 1) }
-        )
-    }
-}
-
-Surface(
-    tonalElevation = 3.dp,
-    modifier = Modifier.fillMaxWidth()
-) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(12.dp)
-    ) {
-        OutlinedTextField(
-            value = typedText,
-            onValueChange = { typedText = it },
-            modifier = Modifier.weight(1f),
-            placeholder = {
-                Text("Type a message...")
-            },
-            minLines = 1,
-            maxLines = 5
-        )
-
-        Spacer(Modifier.width(8.dp))
-
-        IconButton(
-            onClick = {
-                if (typedText.isNotBlank()) {
-                    viewModel.handleUserInput(typedText)
-                    typedText = ""
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    contentPadding = PaddingValues(vertical = 12.dp)
+                ) {
+                    items(state.messages) { message ->
+                        MessageBubble(message)
+                    }
                 }
             }
-        ) {
-            Icon(Icons.Default.Send, contentDescription = "Send")
-        }
 
-        IconButton(
-            onClick = {
-                if (state.isListening)
-                    viewModel.cancelListening()
-                else
-                    viewModel.startListening()
+            if (state.liveTranscript.isNotBlank()) {
+                Text(
+                    text = state.liveTranscript,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(vertical = 4.dp)
+                )
             }
-        ) {
-            Icon(
-                Icons.Default.Mic,
-                contentDescription = "Voice",
-                tint = if (state.isListening)
-                    MaterialTheme.colorScheme.primary
-                else
-                    MaterialTheme.colorScheme.onSurface
-            )
-        }
-    }
-}
         }
     }
 }
