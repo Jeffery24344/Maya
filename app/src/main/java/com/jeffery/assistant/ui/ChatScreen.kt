@@ -131,12 +131,16 @@ fun ChatScreen(viewModel: AssistantViewModel, onOpenJournal: () -> Unit) {
         }
     ) { padding ->
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(horizontal = 12.dp)
-                .imePadding()
-                .dragAndDropTarget(shouldStartDragAndDrop = { true }, target = dropTarget)
+           modifier = Modifier
+    .fillMaxSize()
+    .padding(padding)
+    .padding(horizontal = 12.dp)
+    .navigationBarsPadding()
+    .imePadding()
+    .dragAndDropTarget(
+        shouldStartDragAndDrop = { true },
+        target = dropTarget
+    )
         ) {
             val novaState = when {
                 state.isSpeaking -> NovaState.SPEAKING
@@ -163,80 +167,91 @@ fun ChatScreen(viewModel: AssistantViewModel, onOpenJournal: () -> Unit) {
                 }
             }
 
-            // NOTE: the weight(1f) must live on SelectionContainer (the direct child of
-            // this Column), not on the LazyColumn nested inside it — Column only reads
-            // weight parent-data off its immediate children. Putting it one level too
-            // deep meant Column measured SelectionContainer with unbounded height, so the
-            // chat list grew forever and pushed the quick replies + input row off-screen
-            // as messages accumulated.
             SelectionContainer(modifier = Modifier.weight(1f)) {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                    contentPadding = PaddingValues(vertical = 12.dp)
-                ) {
-                    items(state.messages) { message ->
-                        MessageBubble(message)
-                    }
-                }
-            }
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+        contentPadding = PaddingValues(vertical = 12.dp)
+    ) {
+        items(state.messages) { message ->
+            MessageBubble(message)
+        }
+    }
+}
 
-            if (state.liveTranscript.isNotBlank()) {
-                Text(
-                    text = state.liveTranscript,
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(vertical = 4.dp)
-                )
-            }
+if (state.liveTranscript.isNotBlank()) {
+    Text(
+        text = state.liveTranscript,
+        style = MaterialTheme.typography.bodyMedium,
+        modifier = Modifier.padding(vertical = 4.dp)
+    )
+}
 
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(bottom = 6.dp)
-            ) {
-                QUICK_REPLIES.forEach { suggestion ->
-                    AssistChip(
-                        onClick = { typedText = suggestion },
-                        label = { Text(suggestion.trim(), maxLines = 1) }
-                    )
-                }
-            }
+Row(
+    horizontalArrangement = Arrangement.spacedBy(8.dp),
+    modifier = Modifier
+        .fillMaxWidth()
+        .horizontalScroll(rememberScrollState())
+        .padding(bottom = 6.dp)
+) {
+    QUICK_REPLIES.take(3).forEach { suggestion ->
+        AssistChip(
+            onClick = { typedText = suggestion },
+            label = { Text(suggestion.trim(), maxLines = 1) }
+        )
+    }
+}
 
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 8.dp)
-            ) {
-                OutlinedTextField(
-                    value = typedText,
-                    onValueChange = { typedText = it },
-                    modifier = Modifier.weight(1f),
-                    placeholder = { Text("Type, drop a file, or tap the mic\u2026") },
-                    singleLine = true
-                )
-                Spacer(Modifier.width(8.dp))
-                IconButton(onClick = {
-                    if (typedText.isNotBlank()) {
-                        viewModel.handleUserInput(typedText)
-                        typedText = ""
-                    }
-                }) {
-                    Icon(Icons.Filled.Send, contentDescription = "Send")
-                }
-                IconButton(onClick = {
-                    if (state.isListening) viewModel.cancelListening() else viewModel.startListening()
-                }) {
-                    Icon(
-                        Icons.Filled.Mic,
-                        contentDescription = "Voice input",
-                        tint = if (state.isListening) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.onSurface
-                    )
+Surface(
+    tonalElevation = 3.dp,
+    modifier = Modifier.fillMaxWidth()
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(12.dp)
+    ) {
+        OutlinedTextField(
+            value = typedText,
+            onValueChange = { typedText = it },
+            modifier = Modifier.weight(1f),
+            placeholder = {
+                Text("Type a message...")
+            },
+            minLines = 1,
+            maxLines = 5
+        )
+
+        Spacer(Modifier.width(8.dp))
+
+        IconButton(
+            onClick = {
+                if (typedText.isNotBlank()) {
+                    viewModel.handleUserInput(typedText)
+                    typedText = ""
                 }
             }
+        ) {
+            Icon(Icons.Default.Send, contentDescription = "Send")
+        }
+
+        IconButton(
+            onClick = {
+                if (state.isListening)
+                    viewModel.cancelListening()
+                else
+                    viewModel.startListening()
+            }
+        ) {
+            Icon(
+                Icons.Default.Mic,
+                contentDescription = "Voice",
+                tint = if (state.isListening)
+                    MaterialTheme.colorScheme.primary
+                else
+                    MaterialTheme.colorScheme.onSurface
+            )
         }
     }
 }
