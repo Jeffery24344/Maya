@@ -131,7 +131,7 @@ fun ChatScreen(viewModel: AssistantViewModel, onOpenJournal: () -> Unit) {
         }
     ) { padding ->
         Column(
-           modifier = Modifier
+            modifier = Modifier
     .fillMaxSize()
     .padding(padding)
     .padding(horizontal = 12.dp)
@@ -252,6 +252,9 @@ Surface(
                 else
                     MaterialTheme.colorScheme.onSurface
             )
+        }
+    }
+}
         }
     }
 }
