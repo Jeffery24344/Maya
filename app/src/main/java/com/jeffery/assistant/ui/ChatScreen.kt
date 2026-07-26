@@ -163,9 +163,15 @@ fun ChatScreen(viewModel: AssistantViewModel, onOpenJournal: () -> Unit) {
                 }
             }
 
-            SelectionContainer {
+            // NOTE: the weight(1f) must live on SelectionContainer (the direct child of
+            // this Column), not on the LazyColumn nested inside it — Column only reads
+            // weight parent-data off its immediate children. Putting it one level too
+            // deep meant Column measured SelectionContainer with unbounded height, so the
+            // chat list grew forever and pushed the quick replies + input row off-screen
+            // as messages accumulated.
+            SelectionContainer(modifier = Modifier.weight(1f)) {
                 LazyColumn(
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                     contentPadding = PaddingValues(vertical = 12.dp)
                 ) {
