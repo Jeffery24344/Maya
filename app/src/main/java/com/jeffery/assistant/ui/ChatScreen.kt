@@ -183,7 +183,7 @@ if (state.liveTranscript.isNotBlank()) {
     Text(
         text = state.liveTranscript,
         style = MaterialTheme.typography.bodyMedium,
-        modifier = Modifier.padding(vertical = 4.dp)
+        modifier = Modifier.padding(vertical = 0.dp)
     )
 }
 
